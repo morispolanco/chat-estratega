@@ -7,10 +7,6 @@ import { Ornament, SharpButton, AcutePanel, OracleMessageRenderer } from './comp
 const STORAGE_KEY_USER = 'oracle_user_profile';
 const STORAGE_KEY_HISTORY = 'oracle_chat_history';
 
-// Fix: Removed the conflicting interface declaration for window.aistudio.
-// We will use 'any' casting at call sites to avoid "All declarations of 'aistudio' must have identical modifiers" errors
-// while ensuring compatibility with the pre-configured global interface.
-
 type View = 'onboarding' | 'home' | 'chat';
 
 const App: React.FC = () => {
@@ -20,6 +16,7 @@ const App: React.FC = () => {
   const [userBioInput, setUserBioInput] = useState('');
   const [userGoalInput, setUserGoalInput] = useState('');
   const [hasKey, setHasKey] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -37,7 +34,6 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkKey = async () => {
       try {
-        // Fix: Use 'any' casting to access pre-configured aistudio interface safely
         const selected = await (window as any).aistudio.hasSelectedApiKey();
         setHasKey(selected);
       } catch (e) {
@@ -50,7 +46,9 @@ const App: React.FC = () => {
     const savedHistory = localStorage.getItem(STORAGE_KEY_HISTORY);
 
     if (savedUser) {
-      setUser(JSON.parse(savedUser));
+      const parsedUser = JSON.parse(savedUser);
+      setUser(parsedUser);
+      setUserGoalInput(parsedUser.professionalGoal);
       setView('home');
       if (savedHistory) {
         setMessages(JSON.parse(savedHistory));
@@ -71,7 +69,6 @@ const App: React.FC = () => {
   }, [messages, loading, view]);
 
   const handleOpenKeySelector = async () => {
-    // Fix: Trigger openSelectKey and immediately assume success as per guidelines to handle race conditions
     await (window as any).aistudio.openSelectKey();
     setHasKey(true);
   };
@@ -90,6 +87,16 @@ const App: React.FC = () => {
     setView('home');
   };
 
+  const handleUpdateGoal = () => {
+    if (user && userGoalInput.trim()) {
+      const updatedUser = { ...user, professionalGoal: userGoalInput.trim() };
+      setUser(updatedUser);
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(updatedUser));
+      setShowSettings(false);
+      alert("Meta profesional actualizada. El Oráculo ajustará su agudeza.");
+    }
+  };
+
   const startNewConversation = () => {
     const initialMessage: Message = { 
       role: 'assistant', 
@@ -103,11 +110,11 @@ const App: React.FC = () => {
     setView('chat');
   };
 
-  // Fix: Implemented clearHistory function to resolve the "Cannot find name 'clearHistory'" error
   const clearHistory = () => {
-    setMessages([]);
-    localStorage.removeItem(STORAGE_KEY_HISTORY);
-    alert("El archivo intelectual ha sido purgado.");
+    if (window.confirm("¿Deseas purgar el archivo intelectual?")) {
+      setMessages([]);
+      localStorage.removeItem(STORAGE_KEY_HISTORY);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -131,12 +138,10 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, { role: 'assistant', content: oracleContent }]);
     } catch (error: any) {
       console.error(error);
-      // Fix: Handle specific API key error by resetting state and re-opening the selector as per Gemini API rules
       if (error.message?.includes("Requested entity was not found")) {
         setHasKey(false);
-        await (window as any).aistudio.openSelectKey();
-        setHasKey(true);
-        setMessages(prev => [...prev, { role: 'assistant', content: "Error de acceso: Por favor, selecciona una llave API válida con facturación activa. Se ha vuelto a abrir el selector." }]);
+        await handleOpenKeySelector();
+        setMessages(prev => [...prev, { role: 'assistant', content: "Error de acceso: Por favor, selecciona una llave API válida. Se ha reabierto el selector." }]);
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: "El Oráculo ha tenido un síncope intelectual. Reintenta tu planteamiento." }]);
       }
@@ -323,17 +328,64 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen baroque-gradient flex flex-col items-center p-4 md:p-8">
-      <header className="w-full max-w-5xl flex flex-col items-center mb-8 relative">
-        <button 
-          onClick={() => setView('home')}
-          className="absolute left-0 top-1/2 -translate-y-1/2 text-[10px] text-gray-500 hover:text-[#c5a059] uppercase tracking-widest flex items-center gap-2 transition-all px-4 py-2 hover:bg-white/5 rounded-full"
-        >
-          <i className="fas fa-chevron-left"></i> Salir del Templo
-        </button>
+    <div className="min-h-screen baroque-gradient flex flex-col items-center p-4 md:p-8 relative">
+      <header className="w-full max-w-5xl flex flex-col items-center mb-8 relative z-20">
+        <div className="w-full flex justify-between items-center mb-2">
+          <button 
+            onClick={() => setView('home')}
+            className="text-[10px] text-gray-500 hover:text-[#c5a059] uppercase tracking-widest flex items-center gap-2 transition-all px-4 py-2 hover:bg-white/5 rounded-full"
+          >
+            <i className="fas fa-chevron-left"></i> Salir del Templo
+          </button>
+          <button 
+            onClick={() => setShowSettings(!showSettings)}
+            className={`text-[10px] uppercase tracking-widest flex items-center gap-2 transition-all px-4 py-2 rounded-full ${showSettings ? 'bg-[#c5a05922] text-[#c5a059]' : 'text-gray-500 hover:text-[#c5a059] hover:bg-white/5'}`}
+          >
+            <i className="fas fa-cog"></i> Configuración
+          </button>
+        </div>
         <h1 className="text-4xl md:text-5xl accent-text font-bold text-center tracking-tighter">NI MAGIA NI MÉTODO</h1>
         <Ornament />
       </header>
+
+      {showSettings && (
+        <div className="absolute top-24 right-4 md:right-12 z-50 w-full max-w-xs animate-in fade-in slide-in-from-top-4">
+          <AcutePanel title="Configuración Estratégica">
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[9px] uppercase tracking-widest text-[#c5a059] mb-2 font-bold">Meta Profesional Actual</label>
+                <textarea
+                  rows={3}
+                  value={userGoalInput}
+                  onChange={(e) => setUserGoalInput(e.target.value)}
+                  className="w-full bg-black/60 border border-[#c5a05933] p-3 text-xs focus:border-[#c5a059] transition-all outline-none rounded-sm resize-none accent-text italic serif"
+                  placeholder="Actualiza tu meta..."
+                />
+                <button 
+                  onClick={handleUpdateGoal}
+                  className="w-full mt-2 bg-[#c5a05922] text-[#c5a059] text-[9px] font-bold uppercase py-2 border border-[#c5a05944] hover:bg-[#c5a05933]"
+                >
+                  Actualizar Meta
+                </button>
+              </div>
+              <div className="pt-4 border-t border-[#c5a05911]">
+                <button 
+                  onClick={handleOpenKeySelector}
+                  className="w-full bg-black border border-gray-800 text-gray-400 text-[9px] font-bold uppercase py-2 hover:text-[#c5a059] hover:border-[#c5a05966] transition-all flex items-center justify-center gap-2"
+                >
+                  <i className="fas fa-key"></i> Cambiar Llave Gemini
+                </button>
+              </div>
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="w-full text-[9px] text-gray-600 hover:text-gray-400 uppercase tracking-widest pt-2"
+              >
+                Cerrar Menú
+              </button>
+            </div>
+          </AcutePanel>
+        </div>
+      )}
 
       <main className="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-4 gap-8 flex-1 h-[calc(100vh-280px)]">
         <aside className="lg:col-span-1 space-y-6 overflow-y-auto custom-scrollbar pr-2">
@@ -382,9 +434,6 @@ const App: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <p className="text-[8px] text-gray-600 mt-3 text-center uppercase tracking-tighter">
-                  Modo: {mode} | Tono: {style}
-                </p>
              </AcutePanel>
           )}
 
